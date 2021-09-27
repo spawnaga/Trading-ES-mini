@@ -144,10 +144,10 @@ class get_data:
         # ES_df['EMA_50'] = ta.EMA(ES_df['close'], timeperiod=50)
         # ES_df['EMA_200'] = ta.EMA(ES_df['close'], timeperiod=200)
         ES_df['ATR'] = ta.ATR(ES_df['high'], ES_df['low'], ES_df['close'], timeperiod=20)
-        ES_df['roll_max_cp'] = ES_df['high'].rolling(int(50 / ES_df['ATR'].iloc[-1])).max()
-        ES_df['roll_min_cp'] = ES_df['low'].rolling(int(50 // ES_df['ATR'].iloc[-1])).min()
+        ES_df['roll_max_cp'] = ES_df['high'].rolling(int(150 / ES_df['ATR'].iloc[-1])).max()
+        ES_df['roll_min_cp'] = ES_df['low'].rolling(int(150 // ES_df['ATR'].iloc[-1])).min()
         # ES_df['Mean_ATR'] = (ta.ATR(ES_df['high'], ES_df['low'], ES_df['close'], 21)).mean()
-        ES_df['roll_max_vol'] = ES_df['volume'].rolling(int(50 * ES_df['ATR'].iloc[-1])).max()
+        ES_df['roll_max_vol'] = ES_df['volume'].rolling(int(150 * ES_df['ATR'].iloc[-1])).max()
         # ES_df['vol/max_vol'] = ES_df['volume'] / ES_df['roll_max_vol']
         # ES_df['EMA_9-EMA_26'] = ES_df['EMA_9'] - ES_df['EMA_26']
         # ES_df['EMA_200-EMA_50'] = ES_df['EMA_200'] - ES_df['EMA_50']1
