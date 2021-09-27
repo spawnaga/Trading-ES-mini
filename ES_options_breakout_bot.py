@@ -124,7 +124,7 @@ class get_data:
         """ By have the dataframe of ES futures, this function will analyze and
         provide technicals using TA-lib library"""
 
-        ES_df = util.df(ES)
+        ES_df = ES
         # ES_df.set_index('date', inplace=True)
         # ES_df.index = pd.to_datetime(ES_df.index)
         # ES_df['hours'] = ES_df.index.strftime('%H').astype(int)
@@ -154,6 +154,7 @@ class get_data:
         ES_df['B_upper'], ES_df['B_middle'], ES_df['B_lower'] = ta.BBANDS(ES_df['close'], timeperiod=6, nbdevup=1,
                                                                           nbdevdn=1, matype=MA_Type.T3)
         ES_df.dropna(inplace=True)
+        ib.sleep(1)
         # ES_df.reset_index(inplace=True)
         # ES_df = renko_df(ES_df, ATR)
         return ES_df
@@ -176,6 +177,7 @@ class Trade():
         ES = ibis.ContFuture("ES", "GLOBEX", tradingClass="ES", multiplier=50)  # define
         # ES-Mini futures contract
         ib.qualifyContracts(ES)
+        self.ES_price = ib.reqMktData(ES,'',False,False,None)
         self.ES = ib.reqHistoricalData(contract=ES, endDateTime='', durationStr='2 D',
                                        barSizeSetting='1 min', whatToShow='TRADES', useRTH=False, keepUpToDate=True,
                                        timeout=10)  # start data collection for ES-Mini
@@ -183,7 +185,7 @@ class Trade():
         self.ATR_data = df_raw
         self.ATR = (ta.ATR(df_raw['high'], df_raw['low'], df_raw['close'], 120)).mean()
         self.original_ATR = self.ATR
-        self.data_raw = res.ES(self.ES, self.ATR)
+        self.data_raw = res.ES(df_raw, self.ATR)
         self.stock_owned = np.zeros(2)  # get data from get data class
         self.option_position()  # check holding positions and initiate contracts for calls and puts
         ib.sleep(1)
@@ -256,6 +258,8 @@ class Trade():
         # if self.stock_owned.any() > 0 and self.ATR > self.ATR_minimum:
         #     self.ATR -= self.ATR_decrement
         self.ES = ES
+        self.ES = util.df(ES)
+        self.ES = self.ES.tail(400)
 
         self.call_option_volume = self.roll_contract(self.call_option_volume,
                                                      self.call_option_price.bidSize)  # update call options volume
@@ -265,8 +269,11 @@ class Trade():
         # self.put_option_price_average = self.roll_contract(self.put_option_price_average, self.put_option_price.bid)
 
         self.data_raw = res.ES(self.ES, self.ATR)
+        # if hasNewBar:
+        #     ib.sleep(4)
 
-        if self.data_raw.iloc[-1, 1] == 0:
+        if len(self.data_raw) == 0:
+            print('return due to no data')
             return
         df = self.data_raw[
             ['date', 'high', 'low', 'close', 'volume', 'ATR', 'RSI',
@@ -407,9 +414,9 @@ class Trade():
         self.ATR_factor = 0.25 * round((df["ATR"].iloc[i]) / 0.25) * 1.5
 
         print(
-            f'time = {self.data_raw.iloc[-1, 0] - timedelta(hours=7)} cash in hand = {self.cash_in_hand}, portfolio value = {self.portfolio_value}, unrealized PNL ='
+            f'time = {self.data_raw.iloc[-1, 0]} cash in hand = {self.cash_in_hand}, portfolio value = {self.portfolio_value}, unrealized PNL ='
             f' {self.unrealizedPNL} realized PNL = {self.realizedPNL}, holding = {self.stock_owned[0]} '
-            f'calls and {self.stock_owned[1]} puts and ES = {self.data_raw.iloc[-1, 1]}'
+            f'calls and {self.stock_owned[1]} puts and ES = {self.ES_price.last}'
             f' and [call,puts] values are = '
             f'{self.options_price} and max call price = {self.max_call_price} compared to '
             f'{self.call_option_price.bid} and max put price = {self.max_put_price} compared to '
@@ -434,7 +441,7 @@ class Trade():
             return buy_index, sell_index, take_profit
 
         elif self.barnumb_lock is False and self.stock_owned[0] == 0 and self.stock_owned[1] == 0 and \
-                (df['close'].iloc[i] >= df['roll_max_cp'].iloc[i - 1] and df['volume'].iloc[i] >= 0.5 *
+                (self.ES_price.last >= df['roll_max_cp'].iloc[i - 1] and df['volume'].iloc[i] >= 0.5 *
                  df['roll_max_vol'].iloc[
                      i - 1]) and self.submitted == 0:
             print("Buy call")
@@ -443,7 +450,7 @@ class Trade():
             return buy_index, sell_index, take_profit
 
         elif self.barnumb_lock is False and self.stock_owned[0] == 0 and self.stock_owned[1] == 0 and \
-                (df['close'].iloc[i] <= df['roll_min_cp'].iloc[i - 1] and df['volume'].iloc[i] >= 0.5 *
+                (self.ES_price.last <= df['roll_min_cp'].iloc[i - 1] and df['volume'].iloc[i] >= 0.5 *
                  df['roll_max_vol'].iloc[
                      i - 1]) and self.submitted == 0:
             print("Buy put")
@@ -454,7 +461,7 @@ class Trade():
         elif self.stock_owned[0] > 0 and (not np.isnan(self.call_option_price.bid) and
                                           ((
                                                    self.call_option_price.bid > self.call_option_price.modelGreeks.optPrice) and (
-                                                   df['close'].iloc[i] <= df['roll_min_cp'].iloc[i - 1] -
+                                                   self.ES_price.last <= df['roll_min_cp'].iloc[i - 1] -
                                                    df['ATR'].iloc[i]))
                                           or ((
                                                       self.call_option_price.bid / self.call_cost) < 0.95)) and self.submitted == 0:
@@ -469,7 +476,7 @@ class Trade():
         elif self.stock_owned[1] > 0 and ((not np.isnan(self.put_option_price.bid)) and (
                 ((self.put_option_price.bid / self.put_cost) < 0.95)) or ((
                                                                                   self.put_option_price.bid > self.put_option_price.modelGreeks.optPrice) and (
-                                                                                  df['close'].iloc[i] >=
+                                                                                  self.ES_price.last >=
                                                                                   df['roll_max_cp'].iloc[i - 1] +
                                                                                   df['ATR'].iloc[i]))
         ) and self.submitted == 0:
@@ -801,11 +808,6 @@ def main():
     ib.errorEvent += trading.error
     trading.ES.updateEvent += trading.trade
     ib.run()
-
-
-def maybe_make_dir(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
 
 
 if __name__ == '__main__':
