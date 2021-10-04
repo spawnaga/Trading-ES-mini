@@ -86,23 +86,22 @@ class get_data:
         return date_to_return.strftime('%Y%m%d')  # return the date in the form of (yearmonthday) ex:(20201019)
 
     def get_strikes_and_expiration(self):
-        """ When used, returns strikes and expiration for the ES futures options"""
-        import ib_insync as ibis
-
         ES = ibis.ContFuture("ES", "GLOBEX", tradingClass="ES", multiplier=50)
-        ib.qualifyContracts(ES)
-        print(ES)
+        self.ib.qualifyContracts(ES)
+        
         expiration = self.next_weekday(datetime.today(), self.next_exp_weekday())
-        chains = ib.reqSecDefOptParams(underlyingSymbol='ES', futFopExchange='GLOBEX', underlyingSecType='FUT',
-                                       underlyingConId=ES.conId)
+        chains = self.ib.reqSecDefOptParams(underlyingSymbol='ES', futFopExchange='GLOBEX', underlyingSecType='FUT',underlyingConId=ES.conId)
         chain = util.df(chains)
         strikes = chain[chain['expirations'].astype(str).str.contains(expiration)].loc[:, 'strikes'].values[0]
-        [ESValue] = ib.reqTickers(ES)
-        ES_price = ESValue.marketPrice()
+        if len(strikes) == 0:
+            expiration = datetime.strptime(expiration,'%Y%m%d')+timedelta(days=1)
+            strikes = chain[chain['expirations'].astype(str).str.contains(expiration)].loc[:, 'strikes'].values[0]
+        [ESValue] = self.ib.reqTickers(ES)
+        ES_price= ESValue.marketPrice()
         strikes = [strike for strike in strikes
-                   if strike % 5 == 0
-                   and ES_price - 10 < strike < ES_price + 10]
-        return strikes, expiration
+                if strike % 5 == 0
+                and ES_price - 10 < strike < ES_price + 10]
+        return strikes,expiration
 
     def get_contract(self, right, net_liquidation):
         """ Get contracts for ES futures options by using get_strikes_and_expiration function"""
